@@ -1,24 +1,23 @@
 package com.veritech.rabbitmq.config;
 
-import org.springframework.amqp.core.AcknowledgeMode;
-import org.springframework.amqp.core.AmqpTemplate;
-import org.springframework.amqp.core.Binding;
-import org.springframework.amqp.core.BindingBuilder;
-import org.springframework.amqp.core.Exchange;
-import org.springframework.amqp.core.Queue;
-import org.springframework.amqp.core.TopicExchange;
-import org.springframework.amqp.rabbit.connection.ConnectionFactory;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
-import org.springframework.amqp.rabbit.listener.SimpleMessageListenerContainer;
-import org.springframework.amqp.rabbit.listener.adapter.MessageListenerAdapter;
-import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
-import org.springframework.amqp.support.converter.MessageConverter;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import com.rabbitmq.client.DefaultConsumer;
+import com.rabbitmq.client.DeliverCallback;
 import com.veritech.rabbitmq.consumer.OrderConsumerService;
+
+import br.gov.ans.snirabbitmq.config.SNIRabbitMQConnectionFactory;
+import br.gov.ans.snirabbitmq.core.AckConfirmConsumer;
+import br.gov.ans.snirabbitmq.core.AcknowledgeMode;
+import br.gov.ans.snirabbitmq.core.MessageConverter;
+import br.gov.ans.snirabbitmq.core.QueueConsumerManager;
+import br.gov.ans.snirabbitmq.core.SNIMessageJSONConverter;
+import br.gov.ans.snirabbitmq.core.SNIRabbitMQTemplate;
+import br.gov.ans.snirabbitmq.core.SNNISimpleQueueConsumer;
 
 @Configuration
 public class MessagingConfig {
@@ -37,48 +36,17 @@ public class MessagingConfig {
 	
 	public static final String X_DEAD_LETTER_ROUTING_KEY = "x-dead-letter-routing-key";
 	public static final String X_DEAD_LETTER_ROUTING_KEY_PROPERTY = "dlx.quorum.routing2";
-	@Bean
-	public Queue queue() {
-		Queue q =  new Queue(QUEUE_NAME	);
-		q.addArgument(X_QUEUE_TYPE,X_QUEUE_TYPE_PROPERTY);
-		q.addArgument(X_DEAD_LETTER_EXCHANGE,X_DEAD_LETTER_EXCHANGE_PROPERTY);
-		q.addArgument(X_DEAD_LETTER_ROUTING_KEY, X_DEAD_LETTER_ROUTING_KEY_PROPERTY);
-		return q;
-	}
-	
-	@Bean
-	public Queue queueDLX() {
-		Queue q =  new Queue(DLX_QUEUE_NAME	);
-		q.addArgument(X_QUEUE_TYPE,X_QUEUE_TYPE_PROPERTY);
-		return q;
-	}
-	@Bean
-	public Exchange exchangeDLX() {
-		return new TopicExchange(X_DEAD_LETTER_EXCHANGE_PROPERTY);
-	}
-	
-	@Bean
-	public Exchange exchange() {
-		return new TopicExchange(ORDER_EXCHANGE_NAME);
-	}
 
 	@Bean
-	public Binding dlxBinding (@Autowired Queue queueDLX, @Autowired Exchange exchangeDLX) {
-		return BindingBuilder.bind(queueDLX).to(exchangeDLX).with(X_DEAD_LETTER_ROUTING_KEY_PROPERTY).noargs();
-	}
-	@Bean
-	public Binding binding (@Autowired Queue queue, @Autowired Exchange exchange) {
-		return BindingBuilder.bind(queue).to(exchange).with(ORDER_ROUTING_KEY).noargs();
-	}
-	@Bean
+	@Qualifier("SNIMessageJSONConverter")
 	public MessageConverter messageConverter() {
-		return new Jackson2JsonMessageConverter();
+		return new SNIMessageJSONConverter();
 	}
 
 	@Bean
 	@Qualifier("messageTemplateImp")
-	public AmqpTemplate messageTemplate(ConnectionFactory connectionFactory, MessageConverter messageConverter) {
-		RabbitTemplate rabbitTemplate = new RabbitTemplate(connectionFactory);
+	public SNIRabbitMQTemplate messageTemplate(SNIRabbitMQConnectionFactory connectionFactory, @Autowired @Qualifier("SNIMessageJSONConverter") MessageConverter messageConverter) {
+		SNIRabbitMQTemplate rabbitTemplate = new SNIRabbitMQTemplate(connectionFactory);
 //		rabbitTemplate.setExchange(ORDER_EXCHANGE_NAME);
 //		rabbitTemplate.setRoutingKey(ORDER_ROUTING_KEY);
 		rabbitTemplate.setMessageConverter(messageConverter);
@@ -86,16 +54,17 @@ public class MessagingConfig {
 	}
 
 	@Bean
-	public SimpleMessageListenerContainer container(ConnectionFactory connectionFactory, MessageListenerAdapter messageListenerAdapter) {
-		SimpleMessageListenerContainer container = new SimpleMessageListenerContainer();
-		container.setConnectionFactory(connectionFactory);
-		container.setQueueNames(QUEUE_NAME);
-		container.setMessageListener(messageListenerAdapter);
-		container.setAcknowledgeMode(AcknowledgeMode.MANUAL);
-		return container;
+	public SNNISimpleQueueConsumer container(QueueConsumerManager consumerManager, SNIRabbitMQConnectionFactory connectionFactory, @Qualifier("OrderConsumerService") AckConfirmConsumer messageReader) {
+		SNNISimpleQueueConsumer queueConsumer =  new SNNISimpleQueueConsumer(connectionFactory,messageReader,QUEUE_NAME,1,AcknowledgeMode.MANUAL);
+		consumerManager.addQueueConsumer(queueConsumer);
+		return queueConsumer;
 	}
 	@Bean
-	public MessageListenerAdapter listenerAdapter(OrderConsumerService receiver) {
-		return new MessageListenerAdapter(receiver, "receiveMessage");
+	@Qualifier("OrderConsumerService")
+	public AckConfirmConsumer listenerAdapter( MessageConverter messageConverter,SNIRabbitMQConnectionFactory connectionFactory) {
+		OrderConsumerService consumer = new OrderConsumerService();
+		consumer.setMessageConverter(messageConverter);
+		return consumer;
+
 	}
 }

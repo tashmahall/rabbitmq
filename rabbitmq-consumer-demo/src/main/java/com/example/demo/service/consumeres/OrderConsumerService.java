@@ -22,9 +22,8 @@ public class OrderConsumerService implements ChannelAwareMessageListener {
 	public void onMessage(Message message,Channel channel) throws IOException, InterruptedException, TimeoutException  {
 		ObjectMapper om = new ObjectMapper();
 		try {
-			
 			OrderStatus status = om.readValue(message.getBody(), OrderStatus.class);
-			Thread.sleep(250);
+			Thread.sleep(1000);
 				if (status.getOrder().getNumber() == 99){
 					System.out.println("rejected to dlx: "+status);
 					message.getMessageProperties().setHeader("x-business-error",	"unrecoverable-error");
@@ -38,7 +37,7 @@ public class OrderConsumerService implements ChannelAwareMessageListener {
 					System.out.println("no ack "+status);
 				}
 				if (status.getOrder().getNumber() != 98 && status.getOrder().getNumber() != 99) {
-					channel.basicReject(message.getMessageProperties().getDeliveryTag(), false);
+					channel.basicAck(message.getMessageProperties().getDeliveryTag(), false);
 					System.out.println("ACK OK "+status);
 				}
 
@@ -50,7 +49,5 @@ public class OrderConsumerService implements ChannelAwareMessageListener {
 		}finally {
 			channel.close();
 		}
-		
-		
 	}
 }

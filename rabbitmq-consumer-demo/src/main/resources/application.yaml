@@ -2,7 +2,7 @@ server:
   port: 8081
 spring:
   rabbitmq:
-    addresses: localhost:5671,localhost:5672,localhost:5673
+    addresses: rabbitmq.hm.ans.gov.br:5672
     username: tashmahall
     password: tashmahall
     virtual-host: desenv
